@@ -1,0 +1,406 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local player = Players.LocalPlayer
+local enabled = false
+local betAmount = 2500
+local autoRebirthEnabled = false
+local autoIncreaseEnabled = false
+local betPercent = 10
+local minimized = false
+
+-- Настройки (уменьшенные тайминги)
+local MIN_BET = 20
+local MAX_BET = 100000000
+local BALANCE_CHECK_INTERVAL = 0.8
+local BET_DELAY = 0.6
+local REBIRTH_DELAY = 1.0
+
+-- Цветовая схема (аниме-стиль)
+local colors = {
+    background = Color3.fromRGB(40, 40, 60),
+    header = Color3.fromRGB(80, 60, 90),
+    button = Color3.fromRGB(90, 70, 110),
+    buttonActive = Color3.fromRGB(255, 100, 150),
+    text = Color3.fromRGB(255, 255, 255),
+    glow = Color3.fromRGB(180, 120, 255),
+    accent = Color3.fromRGB(255, 150, 200),
+    minimize = Color3.fromRGB(180, 180, 180),
+    slider = Color3.fromRGB(150, 220, 150),
+    toggleOn = Color3.fromRGB(120, 255, 120),
+    toggleOff = Color3.fromRGB(255, 120, 120),
+    toggleBg = Color3.fromRGB(70, 60, 90)
+}
+
+-- Оптимизация: кэшируем часто используемые объекты
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Создаем интерфейс
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "YuixGui"
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+-- Основной фрейм (компактный размер)
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 260, 0, 240)
+mainFrame.Position = UDim2.new(0.5, -130, 0.5, -120)
+mainFrame.BackgroundColor3 = colors.background
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+mainFrame.Parent = screenGui
+
+-- Аниме-фон (можно заменить на свою картинку)
+local animeBg = Instance.new("ImageLabel")
+animeBg.Size = UDim2.new(1, 0, 1, 0)
+animeBg.Position = UDim2.new(0, 0, 0, 0)
+animeBg.Image = "rbxassetid://13182746047" -- Замените на свой asset id
+animeBg.BackgroundTransparency = 1
+animeBg.ImageTransparency = 0.85 -- Полупрозрачность
+animeBg.ScaleType = Enum.ScaleType.Crop
+animeBg.Parent = mainFrame
+
+-- Затемнение фона
+local bgOverlay = Instance.new("Frame")
+bgOverlay.Size = UDim2.new(1, 0, 1, 0)
+bgOverlay.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+bgOverlay.BackgroundTransparency = 0.4
+bgOverlay.Parent = mainFrame
+
+-- Закругление углов
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 12)
+corner.Parent = mainFrame
+
+-- UIStroke для свечения
+local frameStroke = Instance.new("UIStroke")
+frameStroke.Thickness = 2
+frameStroke.Color = colors.glow
+frameStroke.Transparency = 0.3
+frameStroke.Parent = mainFrame
+
+-- Заголовок (компактный)
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 30)
+titleBar.Position = UDim2.new(0, 0, 0, 0)
+titleBar.BackgroundColor3 = colors.header
+titleBar.Parent = mainFrame
+Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12, 0, 0)
+
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(1, -60, 1, 0)
+titleText.Position = UDim2.new(0, 30, 0, 0)
+titleText.Text = "♡ YuixGui ♡"
+titleText.BackgroundTransparency = 1
+titleText.TextColor3 = colors.text
+titleText.Font = Enum.Font.GothamBold
+titleText.TextSize = 16
+titleText.TextXAlignment = Enum.TextXAlignment.Center
+titleText.Parent = titleBar
+
+-- Кнопка сворачивания (меньше)
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Size = UDim2.new(0, 26, 0, 26)
+minimizeButton.Position = UDim2.new(1, -30, 0.5, -13)
+minimizeButton.Text = "-"
+minimizeButton.BackgroundColor3 = colors.minimize
+minimizeButton.TextColor3 = colors.text
+minimizeButton.Font = Enum.Font.GothamBold
+minimizeButton.TextSize = 18
+minimizeButton.Parent = titleBar
+Instance.new("UICorner", minimizeButton).CornerRadius = UDim.new(0, 6)
+
+-- Контейнер для содержимого
+local contentFrame = Instance.new("Frame")
+contentFrame.Size = UDim2.new(1, 0, 1, -30)
+contentFrame.Position = UDim2.new(0, 0, 0, 30)
+contentFrame.BackgroundTransparency = 1
+contentFrame.Parent = mainFrame
+
+-- Функция создания компактных переключателей
+local function createToggle(posY, text)
+    local toggleFrame = Instance.new("Frame")
+    toggleFrame.Size = UDim2.new(0.9, 0, 0, 28)
+    toggleFrame.Position = UDim2.new(0.05, 0, posY, 0)
+    toggleFrame.BackgroundTransparency = 1
+    toggleFrame.Parent = contentFrame
+
+    local toggleText = Instance.new("TextLabel")
+    toggleText.Size = UDim2.new(0.65, 0, 1, 0)
+    toggleText.Position = UDim2.new(0, 0, 0, 0)
+    toggleText.Text = text
+    toggleText.TextColor3 = colors.text
+    toggleText.BackgroundTransparency = 1
+    toggleText.Font = Enum.Font.GothamBold
+    toggleText.TextSize = 13
+    toggleText.TextXAlignment = Enum.TextXAlignment.Left
+    toggleText.Parent = toggleFrame
+
+    local toggleBg = Instance.new("Frame")
+    toggleBg.Size = UDim2.new(0, 48, 0, 24)
+    toggleBg.Position = UDim2.new(1, -48, 0.5, -12)
+    toggleBg.BackgroundColor3 = colors.toggleBg
+    toggleBg.Parent = toggleFrame
+    Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(0, 12)
+
+    local toggleButton = Instance.new("Frame")
+    toggleButton.Size = UDim2.new(0, 20, 0, 20)
+    toggleButton.Position = UDim2.new(0, 2, 0.5, -10)
+    toggleButton.BackgroundColor3 = colors.toggleOff
+    toggleButton.Parent = toggleBg
+    Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0, 10)
+
+    local toggleStroke = Instance.new("UIStroke", toggleBg)
+    toggleStroke.Thickness = 1
+    toggleStroke.Color = colors.glow
+    toggleStroke.Transparency = 0.5
+
+    local function updateToggle(state)
+        local tweenInfo = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        if state then
+            TweenService:Create(toggleButton, tweenInfo, {
+                Position = UDim2.new(1, -22, 0.5, -10),
+                BackgroundColor3 = colors.toggleOn
+            }):Play()
+        else
+            TweenService:Create(toggleButton, tweenInfo, {
+                Position = UDim2.new(0, 2, 0.5, -10),
+                BackgroundColor3 = colors.toggleOff
+            }):Play()
+        end
+    end
+
+    return {frame = toggleFrame, bg = toggleBg, button = toggleButton, update = updateToggle}
+end
+
+-- Создаем переключатели с правильными отступами
+local autoBetToggle = createToggle(0.1, "Автоставка")
+local rebirthToggle = createToggle(0.22, "Авто-ребирт")
+local increaseToggle = createToggle(0.34, "Ставка: "..betPercent.."%")
+
+-- Компактный слайдер
+local sliderFrame = Instance.new("Frame")
+sliderFrame.Size = UDim2.new(0.9, 0, 0, 20)
+sliderFrame.Position = UDim2.new(0.05, 0, 0.46, 0)
+sliderFrame.BackgroundColor3 = colors.toggleBg
+sliderFrame.Parent = contentFrame
+Instance.new("UICorner", sliderFrame).CornerRadius = UDim.new(0, 4)
+
+local sliderFill = Instance.new("Frame")
+sliderFill.Size = UDim2.new(betPercent/100, 0, 1, 0)
+sliderFill.BackgroundColor3 = colors.slider
+sliderFill.Parent = sliderFrame
+Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(0, 4)
+
+local sliderText = Instance.new("TextLabel")
+sliderText.Size = UDim2.new(1, 0, 1, 0)
+sliderText.Text = betPercent.."%"
+sliderText.TextColor3 = colors.text
+sliderText.BackgroundTransparency = 1
+sliderText.Font = Enum.Font.Gotham
+sliderText.TextSize = 12
+sliderText.Parent = sliderFrame
+
+-- Обработка слайдера
+local function updateSlider(input)
+    local sliderPos = math.clamp((input.Position.X - sliderFrame.AbsolutePosition.X) / sliderFrame.AbsoluteSize.X, 0, 1)
+    betPercent = math.floor(sliderPos * 100)
+    if betPercent < 1 then betPercent = 1 end
+    sliderFill.Size = UDim2.new(sliderPos, 0, 1, 0)
+    sliderText.Text = betPercent.."%"
+    increaseToggle.frame:FindFirstChildOfType("TextLabel").Text = "Ставка: "..betPercent.."%"
+end
+
+sliderFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        updateSlider(input)
+        
+        local connection
+        connection = input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                connection:Disconnect()
+            else
+                updateSlider(input)
+            end
+        end)
+    end
+end)
+
+-- Компактная информация о балансе
+local balanceLabel = Instance.new("TextLabel")
+balanceLabel.Size = UDim2.new(0.9, 0, 0, 18)
+balanceLabel.Position = UDim2.new(0.05, 0, 0.58, 0)
+balanceLabel.Text = "Баланс: загрузка..."
+balanceLabel.TextColor3 = colors.text
+balanceLabel.BackgroundTransparency = 1
+balanceLabel.Font = Enum.Font.GothamBold
+balanceLabel.TextSize = 13
+balanceLabel.TextXAlignment = Enum.TextXAlignment.Left
+balanceLabel.Parent = contentFrame
+
+-- Стильная подпись создателей
+local creatorLabel = Instance.new("TextLabel")
+creatorLabel.Size = UDim2.new(0.9, 0, 0, 16)
+creatorLabel.Position = UDim2.new(0.05, 0, 0.85, 0)
+creatorLabel.Text = "by Yuix & Mkc ♡"
+creatorLabel.TextColor3 = Color3.fromRGB(200, 160, 220)
+creatorLabel.BackgroundTransparency = 1
+creatorLabel.Font = Enum.Font.GothamMedium
+creatorLabel.TextSize = 11
+creatorLabel.TextXAlignment = Enum.TextXAlignment.Right
+creatorLabel.Parent = contentFrame
+
+-- Функция для форматирования чисел
+local function formatNumber(num)
+    num = math.floor(num)
+    if num >= 1000000000 then
+        return string.format("%.1fB", num/1000000000)
+    elseif num >= 1000000 then
+        return string.format("%.1fM", num/1000000)
+    elseif num >= 1000 then
+        return string.format("%.1fK", num/1000)
+    end
+    return tostring(num)
+end
+
+-- Оптимизированная функция поиска баланса
+local balanceNames = {"Dengi", "Money", "Coins", "Points", "Cash", "Balance", "Gold"}
+local function findBalance()
+    local leaderstats = player:FindFirstChild("leaderstats")
+    if leaderstats then
+        for _, name in ipairs(balanceNames) do
+            local stat = leaderstats:FindFirstChild(name)
+            if stat and (stat:IsA("IntValue") or stat:IsA("NumberValue")) then
+                return stat.Value
+            end
+        end
+    end
+    
+    for _, name in ipairs(balanceNames) do
+        local stat = player:FindFirstChild(name)
+        if stat and (stat:IsA("IntValue") or stat:IsA("NumberValue")) then
+            return stat.Value
+        end
+    end
+    
+    return nil
+end
+
+-- Обработчики переключателей
+autoBetToggle.bg.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        enabled = not enabled
+        autoBetToggle.update(enabled)
+    end
+end)
+
+rebirthToggle.bg.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        autoRebirthEnabled = not autoRebirthEnabled
+        rebirthToggle.update(autoRebirthEnabled)
+    end
+end)
+
+increaseToggle.bg.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        autoIncreaseEnabled = not autoIncreaseEnabled
+        increaseToggle.update(autoIncreaseEnabled)
+        increaseToggle.frame:FindFirstChildOfType("TextLabel").Text = autoIncreaseEnabled and "Ставка: "..betPercent.."%" or "Фикс. ставка"
+    end
+end)
+
+-- Функция для сворачивания/разворачивания
+minimizeButton.MouseButton1Click:Connect(function()
+    minimized = not minimized
+    minimizeButton.Text = minimized and "+" or "-"
+    
+    local tweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local contentTween = TweenService:Create(contentFrame, tweenInfo, {
+        Position = minimized and UDim2.new(0, 0, 0, -210) or UDim2.new(0, 0, 0, 30)
+    })
+    local frameTween = TweenService:Create(mainFrame, tweenInfo, {
+        Size = minimized and UDim2.new(0, 260, 0, 30) or UDim2.new(0, 260, 0, 240)
+    })
+    
+    contentTween:Play()
+    frameTween:Play()
+end)
+
+-- Перетаскивание окна
+local dragging, dragInput, dragStart, startPos
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = mainFrame.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+        local delta = input.Position - dragStart
+        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- Оптимизированная функция обновления баланса
+local lastBalanceCheck, currentBalance = 0, 0
+local function updateBalance()
+    local now = tick()
+    if now - lastBalanceCheck >= BALANCE_CHECK_INTERVAL then
+        lastBalanceCheck = now
+        local balance = findBalance()
+        if balance then
+            currentBalance = balance
+            balanceLabel.Text = "Баланс: " .. formatNumber(currentBalance)
+        else
+            balanceLabel.Text = "Баланс: не найден"
+        end
+    end
+end
+
+-- Основной цикл с быстрыми таймингами
+local lastBetTime, lastRebirthTime = 0, 0
+local CasinoBetEvent = ReplicatedStorage:FindFirstChild("CasinoBetEvent")
+local RebirthRequestEvent = ReplicatedStorage:FindFirstChild("RebirthRequestEvent")
+
+RunService.Heartbeat:Connect(function()
+    updateBalance()
+    
+    local now = tick()
+    
+    if enabled and currentBalance and currentBalance > 0 then
+        if now - lastBetTime >= BET_DELAY then
+            lastBetTime = now
+            
+            -- Расчет ставки в зависимости от настроек
+            if autoIncreaseEnabled then
+                betAmount = math.floor(currentBalance * (betPercent / 100))
+                betAmount = math.max(MIN_BET, math.min(betAmount, MAX_BET))
+            else
+                betAmount = math.max(MIN_BET, math.min(betAmount, currentBalance))
+            end
+            
+            if CasinoBetEvent then
+                pcall(function()
+                    CasinoBetEvent:FireServer(betAmount)
+                end)
+            end
+        end
+    end
+    
+    if autoRebirthEnabled and now - lastRebirthTime >= REBIRTH_DELAY and RebirthRequestEvent then
+        lastRebirthTime = now
+        pcall(function()
+            RebirthRequestEvent:FireServer()
+        end)
+    end
+end)
